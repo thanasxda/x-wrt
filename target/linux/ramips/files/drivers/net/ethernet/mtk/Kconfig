@@ -1,0 +1,70 @@
+config NET_VENDOR_MTK
+	tristate "Mediatek/Ralink ethernet driver"
+	depends on RALINK
+	help
+	  This driver supports the ethernet mac inside the Mediatek and Ralink WiSoCs
+
+config NET_MTK_SOC
+	def_tristate NET_VENDOR_MTK
+
+if NET_MTK_SOC
+choice
+	prompt "MAC type"
+
+config NET_MTK_RT2880
+	bool "RT2882"
+	depends on MIPS && SOC_RT288X
+
+config NET_MTK_RT3050
+	bool "RT3050/MT7628"
+	depends on MIPS && (SOC_RT305X || SOC_MT7620)
+
+config NET_MTK_RT3883
+	bool "RT3883"
+	depends on MIPS && SOC_RT3883
+
+config NET_MTK_MT7620
+	bool "MT7620"
+	depends on MIPS && SOC_MT7620
+
+config NET_MTK_MT7621
+	bool "MT7621"
+	depends on MIPS && SOC_MT7621
+
+endchoice
+
+config NET_MTK_OFFLOAD
+	def_bool NET_MTK_SOC
+	depends on NET_MTK_MT7621
+
+config NET_MTK_HW_QOS
+	def_bool NET_MTK_SOC
+	depends on NET_MTK_MT7623
+
+config NET_MTK_MDIO
+	def_bool NET_MTK_SOC
+	depends on (NET_MTK_RT2880 || NET_MTK_RT3883 || NET_MTK_MT7620 || NET_MTK_MT7621)
+	select PHYLIB
+
+config NET_MTK_MDIO_RT2880
+	def_bool NET_MTK_SOC
+	depends on (NET_MTK_RT2880 || NET_MTK_RT3883)
+	select NET_MTK_MDIO
+
+config NET_MTK_MDIO_MT7620
+	def_bool NET_MTK_SOC
+	depends on (NET_MTK_MT7620 || NET_MTK_MT7621)
+	select NET_MTK_MDIO
+
+config NET_MTK_ESW_RT3050
+	def_tristate NET_MTK_SOC
+	depends on NET_MTK_RT3050
+
+config NET_MTK_GSW_MT7620
+	def_tristate NET_MTK_SOC
+	depends on NET_MTK_MT7620
+
+config NET_MTK_GSW_MT7621
+	def_tristate NET_MTK_SOC
+	depends on NET_MTK_MT7621
+endif

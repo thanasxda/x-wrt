@@ -1,0 +1,24 @@
+diff --git a/drivers/net/ethernet/Kconfig b/drivers/net/ethernet/Kconfig
+index e8e9c16..ac7a385 100644
+--- a/drivers/net/ethernet/Kconfig
++++ b/drivers/net/ethernet/Kconfig
+@@ -119,6 +119,7 @@ config LANTIQ_XRX200
+ 
+ source "drivers/net/ethernet/marvell/Kconfig"
+ source "drivers/net/ethernet/mediatek/Kconfig"
++source "drivers/net/ethernet/mtk/Kconfig"
+ source "drivers/net/ethernet/mellanox/Kconfig"
+ source "drivers/net/ethernet/micrel/Kconfig"
+ source "drivers/net/ethernet/microchip/Kconfig"
+diff --git a/drivers/net/ethernet/Makefile b/drivers/net/ethernet/Makefile
+index 05abebc..1ff717a 100644
+--- a/drivers/net/ethernet/Makefile
++++ b/drivers/net/ethernet/Makefile
+@@ -53,6 +53,7 @@ obj-$(CONFIG_LANTIQ_ETOP) += lantiq_etop.o
+ obj-$(CONFIG_LANTIQ_XRX200) += lantiq_xrx200.o
+ obj-$(CONFIG_NET_VENDOR_MARVELL) += marvell/
+ obj-$(CONFIG_NET_VENDOR_MEDIATEK) += mediatek/
++obj-$(CONFIG_NET_VENDOR_MTK) += mtk/
+ obj-$(CONFIG_NET_VENDOR_MELLANOX) += mellanox/
+ obj-$(CONFIG_NET_VENDOR_MICREL) += micrel/
+ obj-$(CONFIG_NET_VENDOR_MICROCHIP) += microchip/
