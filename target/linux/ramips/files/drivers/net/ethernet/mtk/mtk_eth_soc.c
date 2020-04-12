@@ -230,7 +230,7 @@ static void fe_clean_rx(struct fe_priv *priv)
 		for (i = 0; i < ring->rx_ring_size; i++)
 			if (ring->rx_data[i]) {
 				if (ring->rx_dma && ring->rx_dma[i].rxd1)
-					dma_unmap_single(&priv->netdev->dev,
+					dma_unmap_single(priv->dev,
 							 ring->rx_dma[i].rxd1,
 							 ring->rx_buf_size,
 							 DMA_FROM_DEVICE);
@@ -242,7 +242,7 @@ static void fe_clean_rx(struct fe_priv *priv)
 	}
 
 	if (ring->rx_dma) {
-		dma_free_coherent(&priv->netdev->dev,
+		dma_free_coherent(priv->dev,
 				  ring->rx_ring_size * sizeof(*ring->rx_dma),
 				  ring->rx_dma,
 				  ring->rx_phys);
@@ -259,7 +259,6 @@ static void fe_clean_rx(struct fe_priv *priv)
 
 static int fe_alloc_rx(struct fe_priv *priv)
 {
-	struct net_device *netdev = priv->netdev;
 	struct fe_rx_ring *ring = &priv->rx_ring;
 	int i, pad;
 
@@ -276,7 +275,7 @@ static int fe_alloc_rx(struct fe_priv *priv)
 			goto no_rx_mem;
 	}
 
-	ring->rx_dma = dma_alloc_coherent(&netdev->dev,
+	ring->rx_dma = dma_alloc_coherent(priv->dev,
 			ring->rx_ring_size * sizeof(*ring->rx_dma),
 			&ring->rx_phys,
 			GFP_ATOMIC | __GFP_ZERO);
@@ -288,11 +287,11 @@ static int fe_alloc_rx(struct fe_priv *priv)
 	else
 		pad = NET_IP_ALIGN;
 	for (i = 0; i < ring->rx_ring_size; i++) {
-		dma_addr_t dma_addr = dma_map_single(&netdev->dev,
+		dma_addr_t dma_addr = dma_map_single(priv->dev,
 				ring->rx_data[i] + NET_SKB_PAD + pad,
 				ring->rx_buf_size,
 				DMA_FROM_DEVICE);
-		if (unlikely(dma_mapping_error(&netdev->dev, dma_addr)))
+		if (unlikely(dma_mapping_error(priv->dev, dma_addr)))
 			goto no_rx_mem;
 		ring->rx_dma[i].rxd1 = (unsigned int)dma_addr;
 
@@ -342,7 +341,7 @@ static void fe_txd_unmap(struct device *dev, struct fe_tx_buf *tx_buf)
 static void fe_clean_tx(struct fe_priv *priv)
 {
 	int i;
-	struct device *dev = &priv->netdev->dev;
+	struct device *dev = priv->dev;
 	struct fe_tx_ring *ring = &priv->tx_ring;
 
 	if (ring->tx_buf) {
@@ -378,7 +377,7 @@ static int fe_alloc_tx(struct fe_priv *priv)
 	if (!ring->tx_buf)
 		goto no_tx_mem;
 
-	ring->tx_dma = dma_alloc_coherent(&priv->netdev->dev,
+	ring->tx_dma = dma_alloc_coherent(priv->dev,
 			ring->tx_ring_size * sizeof(*ring->tx_dma),
 			&ring->tx_phys,
 			GFP_ATOMIC | __GFP_ZERO);
@@ -664,7 +663,7 @@ static int fe_tx_map_dma(struct sk_buff *skb, struct net_device *dev,
 {
 	struct fe_priv *priv = netdev_priv(dev);
 	struct fe_map_state st = {
-		.dev = &dev->dev,
+		.dev = priv->dev,
 		.ring_idx = ring->tx_next_idx,
 	};
 	struct sk_buff *head = skb;
@@ -716,11 +715,19 @@ next_frag:
 	/* TX SG offload */
 	nr_frags = skb_shinfo(skb)->nr_frags;
 	for (i = 0; i < nr_frags; i++) {
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 4, 0)
 		struct skb_frag_struct *frag;
+#else
+		skb_frag_t *frag;
+#endif
 
 		frag = &skb_shinfo(skb)->frags[i];
 		if (fe_tx_dma_map_page(ring, &st, skb_frag_page(frag),
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 4, 0)
 				       frag->page_offset, skb_frag_size(frag)))
+#else
+				       skb_frag_off(frag), skb_frag_size(frag)))
+#endif
 			goto err_dma;
 	}
 
@@ -755,7 +762,11 @@ next_frag:
 			netif_wake_queue(dev);
 	}
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 2, 0)
 	if (netif_xmit_stopped(netdev_get_tx_queue(dev, 0)) || !head->xmit_more)
+#else
+	if (netif_xmit_stopped(netdev_get_tx_queue(dev, 0)) || !netdev_xmit_more())
+#endif
 		fe_reg_w32(ring->tx_next_idx, FE_REG_TX_CTX_IDX0);
 
 	return 0;
@@ -764,7 +775,7 @@ err_dma:
 	j = ring->tx_next_idx;
 	for (i = 0; i < tx_num; i++) {
 		/* unmap dma */
-		fe_txd_unmap(&dev->dev, &ring->tx_buf[j]);
+		fe_txd_unmap(priv->dev, &ring->tx_buf[j]);
 		ring->tx_dma[j].txd2 = TX_DMA_DESP2_DEF;
 
 		j = NEXT_TX_DESP_IDX(j);
@@ -814,14 +825,22 @@ static inline int fe_cal_txd_req(struct sk_buff *skb)
 {
 	struct sk_buff *head = skb;
 	int i, nfrags = 0;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 4, 0)
 	struct skb_frag_struct *frag;
+#else
+	skb_frag_t *frag;
+#endif
 
 next_frag:
 	nfrags++;
 	if (skb_is_gso(skb)) {
 		for (i = 0; i < skb_shinfo(skb)->nr_frags; i++) {
 			frag = &skb_shinfo(skb)->frags[i];
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 4, 0)
 			nfrags += DIV_ROUND_UP(frag->size, TX_DMA_BUF_LEN);
+#else
+			nfrags += DIV_ROUND_UP(skb_frag_size(frag), TX_DMA_BUF_LEN);
+#endif
 		}
 	} else {
 		nfrags += skb_shinfo(skb)->nr_frags;
@@ -913,11 +932,11 @@ static int fe_poll_rx(struct napi_struct *napi, int budget,
 			stats->rx_dropped++;
 			goto release_desc;
 		}
-		dma_addr = dma_map_single(&netdev->dev,
+		dma_addr = dma_map_single(priv->dev,
 					  new_data + NET_SKB_PAD + pad,
 					  ring->rx_buf_size,
 					  DMA_FROM_DEVICE);
-		if (unlikely(dma_mapping_error(&netdev->dev, dma_addr))) {
+		if (unlikely(dma_mapping_error(priv->dev, dma_addr))) {
 			skb_free_frag(new_data);
 			goto release_desc;
 		}
@@ -930,7 +949,7 @@ static int fe_poll_rx(struct napi_struct *napi, int budget,
 		}
 		skb_reserve(skb, NET_SKB_PAD + NET_IP_ALIGN);
 
-		dma_unmap_single(&netdev->dev, trxd.rxd1,
+		dma_unmap_single(priv->dev, trxd.rxd1,
 				 ring->rx_buf_size, DMA_FROM_DEVICE);
 		pktlen = RX_DMA_GET_PLEN0(trxd.rxd2);
 		skb->dev = netdev;
@@ -986,7 +1005,6 @@ static int fe_poll_tx(struct fe_priv *priv, int budget, u32 tx_intr,
 		      int *tx_again)
 {
 	struct net_device *netdev = priv->netdev;
-	struct device *dev = &netdev->dev;
 	unsigned int bytes_compl = 0;
 	struct sk_buff *skb;
 	struct fe_tx_buf *tx_buf;
@@ -1009,7 +1027,7 @@ static int fe_poll_tx(struct fe_priv *priv, int budget, u32 tx_intr,
 			done++;
 			budget--;
 		}
-		fe_txd_unmap(dev, tx_buf);
+		fe_txd_unmap(priv->dev, tx_buf);
 		idx = NEXT_TX_DESP_IDX(idx);
 	}
 	ring->tx_free_idx = idx;
@@ -1242,7 +1260,8 @@ static int fe_hw_init(struct net_device *dev)
 	/* disable delay interrupt */
 	fe_reg_w32(0, FE_REG_DLY_INT_CFG);
 
-	fe_int_disable(priv->soc->tx_int | priv->soc->rx_int);
+	/* disable all interrupts during hw init */
+	fe_int_disable(~0);
 
 	/* frame engine will push VLAN tag regarding to VIDX feild in Tx desc */
 	if (fe_reg_table[FE_REG_FE_DMA_VID_BASE])
@@ -1342,6 +1361,8 @@ static int __init fe_init(struct net_device *dev)
 	struct fe_priv *priv = netdev_priv(dev);
 	struct device_node *port;
 	const char *mac_addr;
+	unsigned long flags;
+	u32 val;
 	int err;
 
 	priv->soc->reset_fe();
@@ -1388,6 +1409,25 @@ static int __init fe_init(struct net_device *dev)
 	if ((priv->flags & FE_FLAG_HAS_SWITCH) && priv->soc->switch_config)
 		priv->soc->switch_config(priv);
 
+	set_bit(__FE_DOWN, &priv->state);
+	err = fe_init_dma(priv);
+	if (err) {
+		fe_free_dma(priv);
+		goto err_phy_disconnect;
+	}
+
+	spin_lock_irqsave(&priv->page_lock, flags);
+	val = FE_TX_WB_DDONE | FE_RX_DMA_EN | FE_TX_DMA_EN;
+	if (priv->flags & FE_FLAG_RX_2B_OFFSET)
+		val |= FE_RX_2B_OFFSET;
+	val |= priv->soc->pdma_glo_cfg;
+	fe_reg_w32(val, FE_REG_PDMA_GLO_CFG);
+	spin_unlock_irqrestore(&priv->page_lock, flags);
+
+#ifdef CONFIG_NET_MTK_OFFLOAD
+	mtk_ppe_probe(priv);
+#endif
+
 	return 0;
 
 err_phy_disconnect:
@@ -1400,7 +1440,18 @@ err_phy_disconnect:
 
 static void fe_uninit(struct net_device *dev)
 {
+	unsigned long flags;
 	struct fe_priv *priv = netdev_priv(dev);
+
+	spin_lock_irqsave(&priv->page_lock, flags);
+	fe_reg_w32(fe_reg_r32(FE_REG_PDMA_GLO_CFG) &
+		     ~(FE_TX_WB_DDONE | FE_RX_DMA_EN | FE_TX_DMA_EN),
+		     FE_REG_PDMA_GLO_CFG);
+	spin_unlock_irqrestore(&priv->page_lock, flags);
+	fe_free_dma(priv);
+#ifdef CONFIG_NET_MTK_OFFLOAD
+	mtk_ppe_remove(priv);
+#endif
 
 	if (priv->phy)
 		priv->phy->disconnect(priv);
@@ -1548,8 +1599,6 @@ static int fe_probe(struct platform_device *pdev)
 	struct fe_priv *priv;
 	struct clk *sysclk;
 	int err, napi_weight;
-	unsigned long flags;
-	u32 val;
 
 	device_reset(&pdev->dev);
 
@@ -1610,8 +1659,6 @@ static int fe_probe(struct platform_device *pdev)
 		spin_lock_init(&priv->hw_stats->stats_lock);
 	}
 
-	set_bit(__FE_DOWN, &priv->state);
-
 	sysclk = devm_clk_get(&pdev->dev, NULL);
 	if (!IS_ERR(sysclk)) {
 		priv->sysclk = clk_get_rate(sysclk);
@@ -1654,24 +1701,6 @@ static int fe_probe(struct platform_device *pdev)
 		goto err_free_dev;
 	}
 
-	err = fe_init_dma(priv);
-	if (err) {
-		fe_free_dma(priv);
-		goto err_unreg_dev;
-	}
-
-	spin_lock_irqsave(&priv->page_lock, flags);
-	val = FE_TX_WB_DDONE | FE_RX_DMA_EN | FE_TX_DMA_EN;
-	if (priv->flags & FE_FLAG_RX_2B_OFFSET)
-		val |= FE_RX_2B_OFFSET;
-	val |= priv->soc->pdma_glo_cfg;
-	fe_reg_w32(val, FE_REG_PDMA_GLO_CFG);
-	spin_unlock_irqrestore(&priv->page_lock, flags);
-
-#ifdef CONFIG_NET_MTK_OFFLOAD
-	mtk_ppe_probe(priv);
-#endif
-
 	platform_set_drvdata(pdev, netdev);
 
 	netif_info(priv, probe, netdev, "mediatek frame engine at 0x%08lx, irq %d\n",
@@ -1679,8 +1708,6 @@ static int fe_probe(struct platform_device *pdev)
 
 	return 0;
 
-err_unreg_dev:
-	unregister_netdev(netdev);
 err_free_dev:
 	free_netdev(netdev);
 err_iounmap:
@@ -1693,24 +1720,12 @@ static int fe_remove(struct platform_device *pdev)
 {
 	struct net_device *dev = platform_get_drvdata(pdev);
 	struct fe_priv *priv = netdev_priv(dev);
-	unsigned long flags;
-
-	spin_lock_irqsave(&priv->page_lock, flags);
-	fe_reg_w32(fe_reg_r32(FE_REG_PDMA_GLO_CFG) &
-		     ~(FE_TX_WB_DDONE | FE_RX_DMA_EN | FE_TX_DMA_EN),
-		     FE_REG_PDMA_GLO_CFG);
-	spin_unlock_irqrestore(&priv->page_lock, flags);
-
-#ifdef CONFIG_NET_MTK_OFFLOAD
-	mtk_ppe_remove(priv);
-#endif
 
 	netif_napi_del(&priv->rx_napi);
 	kfree(priv->hw_stats);
 
 	cancel_work_sync(&priv->pending_work);
 
-	fe_free_dma(priv);
 	unregister_netdev(dev);
 	free_netdev(dev);
 	platform_set_drvdata(pdev, NULL);
@@ -1722,7 +1737,7 @@ static struct platform_driver fe_driver = {
 	.probe = fe_probe,
 	.remove = fe_remove,
 	.driver = {
-		.name = "mtk_soc_eth",
+		.name = "ralink_soc_eth",
 		.owner = THIS_MODULE,
 		.of_match_table = of_fe_match,
 	},

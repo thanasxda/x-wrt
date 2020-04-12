@@ -88,8 +88,13 @@ int fe_connect_phy_node(struct fe_priv *priv, struct device_node *phy_node, int 
 		return -ENODEV;
 	}
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 4, 0)
 	phydev->supported &= PHY_GBIT_FEATURES;
 	phydev->advertising = phydev->supported;
+#else
+	linkmode_and(phydev->supported, phydev->supported, PHY_GBIT_FEATURES);
+	linkmode_copy(phydev->advertising, phydev->supported);
+#endif
 	phydev->no_auto_carrier_off = 1;
 
 	dev_info(priv->dev,
@@ -110,9 +115,14 @@ static void phy_init(struct fe_priv *priv, struct phy_device *phy)
 	phy->autoneg = AUTONEG_ENABLE;
 	phy->speed = 0;
 	phy->duplex = 0;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 4, 0)
 	phy->supported &= IS_ENABLED(CONFIG_NET_MTK_MDIO_MT7620) ?
 			PHY_GBIT_FEATURES : PHY_BASIC_FEATURES;
 	phy->advertising = phy->supported | ADVERTISED_Autoneg;
+#else
+	linkmode_and(phy->supported, phy->supported, IS_ENABLED(CONFIG_NET_MTK_MDIO_MT7620) ? PHY_GBIT_FEATURES : PHY_BASIC_FEATURES);
+	linkmode_or(phy->advertising, phy->supported, ADVERTISED_Autoneg);
+#endif
 
 	phy_start_aneg(phy);
 }
