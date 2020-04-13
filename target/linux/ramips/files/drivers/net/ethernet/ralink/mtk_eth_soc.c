@@ -1423,7 +1423,8 @@ static int __init fe_init(struct net_device *dev)
 	val |= priv->soc->pdma_glo_cfg;
 	fe_reg_w32(val, FE_REG_PDMA_GLO_CFG);
 	spin_unlock_irqrestore(&priv->page_lock, flags);
-#ifdef CONFIG_NET_MEDIATEK_OFFLOAD
+
+#ifdef CONFIG_NET_RALINK_OFFLOAD
 	mtk_ppe_probe(priv);
 #endif
 
@@ -1448,7 +1449,7 @@ static void fe_uninit(struct net_device *dev)
 		     FE_REG_PDMA_GLO_CFG);
 	spin_unlock_irqrestore(&priv->page_lock, flags);
 	fe_free_dma(priv);
-#ifdef CONFIG_NET_MEDIATEK_OFFLOAD
+#ifdef CONFIG_NET_RALINK_OFFLOAD
 	mtk_ppe_remove(priv);
 #endif
 
@@ -1736,7 +1737,7 @@ static struct platform_driver fe_driver = {
 	.probe = fe_probe,
 	.remove = fe_remove,
 	.driver = {
-		.name = "mtk_soc_eth",
+		.name = "ralink_soc_eth",
 		.owner = THIS_MODULE,
 		.of_match_table = of_fe_match,
 	},

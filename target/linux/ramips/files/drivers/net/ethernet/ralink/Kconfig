@@ -1,8 +1,8 @@
 config NET_VENDOR_RALINK
-	tristate "Ralink ethernet driver"
+	tristate "Mediatek/Ralink ethernet driver"
 	depends on RALINK
 	help
-	  This driver supports the ethernet mac inside Ralink WiSoCs
+	  This driver supports the ethernet mac inside the Mediatek and Ralink WiSoCs
 
 config NET_RALINK_SOC
 	def_tristate NET_VENDOR_RALINK
