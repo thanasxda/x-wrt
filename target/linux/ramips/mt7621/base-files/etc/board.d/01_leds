@@ -105,7 +105,7 @@ xzwifi,creativebox-v1)
 	ucidef_set_led_netdev "internet" "internet" "$boardname:blue:internet" "wan"
 	;;
 xiaomi,redmi-router-ac2100)
-	ucidef_set_led_netdev "wan" "wan" "$boardname:white:wan" "wan"
+	ucidef_set_led_switch "wan" "wan" "$boardname:white:wan" "switch0" "0x1"
 	;;
 youhua,wr1200js)
 	ucidef_set_led_netdev "internet" "INTERNET" "$boardname:green:wan" "wan"
